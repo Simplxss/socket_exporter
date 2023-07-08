@@ -12,6 +12,9 @@ import (
 	"github.com/YuFanXing/socket_exporter/config"
 )
 
+const namespace = "socket"
+const subsystem = "endpoint"
+
 type Client struct {
 	endpoint config.Endpoint
 	conn     net.Conn
@@ -35,19 +38,6 @@ func (c *Client) Connect() {
 			os.Exit(1)
 		}
 		c.conn = conn
-		go func() {
-			for {
-				buf := make([]byte, 1024)
-				n, err := conn.Read(buf)
-				if err != nil {
-					println("Read failed:", err.Error())
-					continue
-				}
-				if n == c.endpoint.Length {
-					c.data = buf
-				}
-			}
-		}()
 	case "udp":
 		udpAddr, err := net.ResolveUDPAddr("udp", c.endpoint.Address)
 		if err != nil {
@@ -60,19 +50,6 @@ func (c *Client) Connect() {
 			os.Exit(1)
 		}
 		c.conn = conn
-		go func() {
-			for {
-				buf := make([]byte, 2048)
-				n, err := conn.Read(buf)
-				if err != nil {
-					println("Read failed:", err.Error())
-					continue
-				}
-				if n == c.endpoint.Length {
-					c.data = buf
-				}
-			}
-		}()
 	default:
 		println("Unknown protocol:", c.endpoint.Type)
 		os.Exit(1)
@@ -95,14 +72,18 @@ func (c *Client) Collect(ch chan<- prometheus.Metric) {
 			switch node.Datatype {
 			case "bool":
 				var value float64
-				if c.data[int(math.Floor(node.Offset))]&(1<<int(node.Offset*10)%10) == 0 {
+				if c.data[int(math.Floor(node.Offset))]&(1<<(int(node.Offset*10)%10)) == 0 {
 					value = 0
 				} else {
-					value = 1
+					if node.TrueValue == 0 {
+						value = 1
+					} else {
+						value = float64(node.TrueValue)
+					}
 				}
 				ch <- prometheus.MustNewConstMetric(c.Desc[i], prometheus.GaugeValue, value)
 			case "real":
-				ch <- prometheus.MustNewConstMetric(c.Desc[i], prometheus.GaugeValue, float64(math.Float32frombits(binary.BigEndian.Uint32(c.data[int(math.Floor(node.Offset)):int(math.Floor(node.Offset))+4]))))
+				ch <- prometheus.MustNewConstMetric(c.Desc[i], prometheus.GaugeValue, float64(math.Float32frombits(binary.BigEndian.Uint32(c.data[int(node.Offset):int(node.Offset)+4]))))
 			}
 		}
 	}
@@ -113,9 +94,36 @@ func NewClient(endpoint config.Endpoint, reg *prometheus.Registry) *Client {
 	client.endpoint = endpoint
 	client.Connect()
 
+	go func() {
+		for {
+			buf := make([]byte, 1024)
+			n, err := client.conn.Read(buf)
+			if err != nil {
+				println("Read failed:", err.Error())
+				if err.Error() == "EOF" {
+					println("Reconnect:" + client.endpoint.Address)
+					client.Connect()
+				}
+				continue
+			}
+			if n == client.endpoint.Length {
+				client.data = buf
+			}
+		}
+	}()
+
 	for _, node := range endpoint.Protocol {
-		Label := strings.Split(endpoint.Label, "=")
-		client.Desc = append(client.Desc, prometheus.NewDesc(node.Name, node.Help, nil, prometheus.Labels{Label[0]: Label[1]}))
+		Label := make(prometheus.Labels)
+		if endpoint.Label != "" {
+			Label1 := strings.Split(endpoint.Label, "=")
+			Label[Label1[0]] = Label1[1]
+		}
+		if node.Label != "" {
+			Label2 := strings.Split(node.Label, "=")
+			Label[Label2[0]] = Label2[1]
+		}
+
+		client.Desc = append(client.Desc, prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, node.Name), node.Help, nil, Label))
 	}
 
 	reg.MustRegister(&client)

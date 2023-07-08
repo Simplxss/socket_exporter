@@ -1,0 +1,29 @@
+listening:
+  address: 0.0.0.0:8999               # Address to listen on
+  path:    /metrics                   # Path to expose metrics on
+endpoint:
+  - address:  192.168.1.1:2000        # Address of the PLC
+    type:     tcp                     # Type of connection (tcp|udp)
+    length:   5                       # Length of data to read from PLC (NO MORE THAN 1024)
+    label:    target=a                # OPTIONAL label for all metrics on this target
+    protocol:                         # Protocol to use for this target
+      - name:         bool_1          # Name of metric as it appears to Prometheus
+        help:         bool 1          # Help text as it appears to Prometheus
+        label:        region=b        # OPTIONAL label of metric as it appears to Prometheus
+        datatype:     bool            # Datatype of value in PLC (bool|byte|real|word|dword|int|dint)
+        trueValue:    1               # OPTIONAL(only vaild if datatype==bool) value would be setted if data is true (default is 1)
+        metricType:   gauge           # Type of metric as it appears to Prometheus (currently only gauge is supported)
+        offset:       0               # Offset of value in PLC
+      - name:         bool_2
+        help:         bool 2
+        label:        region=c
+        datatype:     bool
+        trueValue:    2
+        metricType:   gauge
+        offset:       0.1
+      - name:         real_1
+        help:         real 1
+        label:        region=c
+        datatype:     real
+        metricType:   gauge
+        offset:       1

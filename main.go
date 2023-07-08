@@ -25,7 +25,7 @@ func main() {
 	}
 	err = yaml.NewDecoder(data).Decode(&config)
 	if err != nil {
-		log.Fatalf("cannot unmarshal data: %v", err)
+		log.Fatalf("cannot decode config file: %v", err)
 	}
 
 	reg := prometheus.NewRegistry()
